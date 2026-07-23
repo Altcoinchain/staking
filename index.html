@@ -90,6 +90,7 @@
         <div class="row">
           <input id="regAmount" type="number" min="32" step="1" placeholder="Stake (min 32 ALT)">
           <input id="regCommission" type="number" min="0" max="50" step="1" placeholder="Commission % (0–50)">
+          <input id="regMoniker" type="text" maxlength="64" placeholder="Moniker (e.g. WATTxchange:nucash-mining)">
         </div>
         <div class="row"><button class="btn green" id="regBtn">Register Validator</button></div>
       </div>
@@ -155,16 +156,40 @@ const RPC = (new URLSearchParams(location.search).get("rpc"))
   || localStorage.getItem("alt_rpc")
   || RPC_DEFAULT;
 const CHAIN_ID_HEX = "0x91a"; // 2330
-const CONTRACT = "0x347F496c887a92ed9706ff3EDF4f0b822Ab00d3E";
+const CONTRACT = "0x55C492DF28Ae84a9f08dCBA9a5F686C1618d0Dac"; // ValidatorStaking v3 (audited)
 const HYBRID_BLOCK = 7000000;
+// v3 selectors (verified with `cast sig`). registerValidator now takes a
+// moniker; the self-management and validator-reward functions are new in v3.
 const SEL = {
-  registerValidator: "0x679cdb06", addSelfStake: "0x427d45ec", attest: "0x3084e87f",
+  registerValidator: "0x445a8f3e", // registerValidator(uint256,string)
+  addSelfStake: "0x427d45ec", unstakeSelf: "0xad6d7426",
+  unregisterValidator: "0x6ca56267", attest: "0x3084e87f",
   delegate: "0x5c19a95c", undelegate: "0x4d99dd16", completeWithdrawals: "0x6a887690",
-  claimRewards: "0xef5cfb8c", getValidator: "0x1904bb2e", getAllValidators: "0xf3513a37",
+  claimUnbondedSelfStake: "0x145bccef", claimRewards: "0xef5cfb8c",
+  claimValidatorRewards: "0xbe22c64c", setCommission: "0x355e6b43",
+  setMoniker: "0x289ad76c", getValidator: "0x1904bb2e", getAllValidators: "0xf3513a37",
   getOnlineValidators: "0x42d6fcd6", getDelegation: "0x15049a5a",
-  getPendingWithdrawals: "0xf340c0d0", totalStaked: "0x817b1cd2",
-  getValidatorCount: "0x7071688a", rewardPool: "0x66666aa9", minStake: "0x9c2a2259",
+  getPendingWithdrawals: "0xf340c0d0", getUnbonding: "0xc25f6ded",
+  getValidatorRewards: "0x4e173004", getValidatorCount: "0x7071688a",
+  totalStaked: "0x817b1cd2", rewardPool: "0x66666aa9", minStake: "0x9c2a2259",
 };
+
+// ABI-encode (uint256 commission, string moniker) for registerValidator.
+function encRegister(commission, moniker) {
+  const bytes = new TextEncoder().encode(moniker);
+  let hexStr = ""; for (const b of bytes) hexStr += b.toString(16).padStart(2, "0");
+  const len = bytes.length;
+  const head = padUint(commission) + padUint(64);          // commission, offset=0x40
+  const body = padUint(len) + hexStr.padEnd(Math.ceil(hexStr.length / 64) * 64, "0");
+  return SEL.registerValidator + head + body;
+}
+// ABI-encode a single string arg (for setMoniker)
+function encString(sel, str) {
+  const bytes = new TextEncoder().encode(str);
+  let hexStr = ""; for (const b of bytes) hexStr += b.toString(16).padStart(2, "0");
+  return sel + padUint(32) + padUint(bytes.length) +
+         hexStr.padEnd(Math.ceil(hexStr.length / 64) * 64, "0");
+}
 
 // ---------------- helpers ----------------
 const $ = (id) => document.getElementById(id);
@@ -286,7 +311,8 @@ async function refreshMine() {
     if (d) html += `<div class="kv"><span class="k">Your delegation to ${short(target)}</span><span>${toAlt(word(d, 0))} ALT (+${toAlt(word(d, 1), 4)} pending)</span></div>`;
   }
   const w = await ethCall(SEL.getPendingWithdrawals + padAddr(account)).catch(() => null);
-  if (w) html += `<div class="kv"><span class="k">Withdrawals</span><span>${toAlt(word(w, 0))} pending · ${toAlt(word(w, 1))} ready</span></div>`;
+  // v3 getPendingWithdrawals returns (ready, locked)
+  if (w) html += `<div class="kv"><span class="k">Withdrawals</span><span>${toAlt(word(w, 0))} ready · ${toAlt(word(w, 1))} still locked</span></div>`;
   $("delInfo").innerHTML = html;
 }
 
@@ -324,9 +350,11 @@ async function sendTx(data, valueWei) {
 $("connectBtn").onclick = connect;
 $("regBtn").onclick = () => {
   const amt = $("regAmount").value, com = $("regCommission").value || "0";
+  const mon = ($("regMoniker").value || "").trim();
   if (!amt || +amt < 32) { toast("Minimum self-stake is 32 ALT."); return; }
   if (+com > 50) { toast("Commission is capped at 50%."); return; }
-  sendTx(SEL.registerValidator + padUint(com), toWei(amt));
+  if (new TextEncoder().encode(mon).length > 64) { toast("Moniker max 64 bytes."); return; }
+  sendTx(encRegister(com, mon), toWei(amt));
 };
 $("addStakeBtn").onclick = () => {
   const amt = $("addStakeAmount").value;
