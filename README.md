@@ -11,7 +11,7 @@ the chain over JSON-RPC for reads and through your browser wallet
 
 ## Contract
 
-`ValidatorStaking` — [`0x55C492DF28Ae84a9f08dCBA9a5F686C1618d0Dac`](https://github.com/Altcoinchain/contracts)
+`ValidatorStaking` — [`0x2e05FfB10eF99e3c8B2BE1b752D7D3D45E6AC2a7`](https://github.com/Altcoinchain/contracts)
 
 | Parameter | Value |
 |---|---|
