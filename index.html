@@ -103,6 +103,13 @@
           <button class="btn ghost" id="attestBtn">Attest Liveness Now</button>
         </div>
         <p class="muted">Your validator node attests automatically every 40 blocks; the manual button is a backup.</p>
+        <div class="row">
+          <button class="btn ghost" id="unregBtn">Unregister Validator</button>
+        </div>
+        <p class="muted">Exits the validator set and begins unbonding your self-stake. The stake stays
+          slashable for the 7-day unbonding period, then <b>Complete Withdrawals</b> releases it.
+          A registered validator that never attests still counts against the network's finality
+          quorum, so retiring one you no longer run is the correct thing to do.</p>
       </div>
     </div>
 
@@ -362,6 +369,14 @@ $("addStakeBtn").onclick = () => {
   sendTx(SEL.addSelfStake, toWei(amt));
 };
 $("attestBtn").onclick = () => sendTx(SEL.attest);
+$("unregBtn").onclick = () => {
+  // Irreversible for the unbonding period, and it forfeits any commission the
+  // validator would have earned meanwhile — make the user say yes on purpose.
+  if (!confirm("Unregister this validator?\n\nYou leave the active set immediately and your "
+             + "self-stake begins a 7-day unbonding period. It stays slashable during that time. "
+             + "You will need to Complete Withdrawals afterwards to get it back.")) return;
+  sendTx(SEL.unregisterValidator);
+};
 $("delBtn").onclick = () => {
   const v = $("delValidator").value, amt = $("delAmount").value;
   if (!v) { toast("Select a validator."); return; }
